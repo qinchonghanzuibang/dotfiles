@@ -6,23 +6,27 @@ set shiftwidth=4
 set autoindent
 syntax on
 set ruler
-set encoding=utf-8  
+set encoding=UTF-8  
 set t_Co=256
 filetype indent on
 set noerrorbells
 imap jj <Esc>
 syntax enable
 set termguicolors
+set guifont=CaskaydiaCove\ Nerd\ Font:h14
+" Having longer updatetime (default is 4000 ms = 4 s) leads to noticeable
+" delays and poor user experience.
+set updatetime=300
 
 call plug#begin()
 Plug 'preservim/nerdtree'
 Plug 'neoclide/coc.nvim', {'branch': 'release'}
 Plug 'vim-airline/vim-airline'
 Plug 'vim-airline/vim-airline-themes'
-Plug 'sainnhe/sonokai'
 Plug 'morhetz/gruvbox'
 Plug 'honza/vim-snippets'
 Plug 'yuttie/comfortable-motion.vim'
+Plug 'ryanoasis/vim-devicons'
 call plug#end()
 
 colorscheme gruvbox
@@ -45,10 +49,9 @@ endif
 set nobackup
 set nowritebackup
 
-" Having longer updatetime (default is 4000 ms = 4 s) leads to noticeable
-" delays and poor user experience.
-set updatetime=300
+let g:NERDTreeWinSize=40
 
+let g:webdevicons_conceal_nerdtree_brackets=0
 
 autocmd VimEnter * NERDTree | wincmd p
 autocmd BufEnter * if tabpagenr('$') == 1 && winnr('$') == 1 && exists('b:NERDTree') && b:NERDTree.isTabTree() | quit | endif
