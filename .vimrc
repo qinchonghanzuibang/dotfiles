@@ -26,7 +26,7 @@ Plug 'vim-airline/vim-airline-themes'
 Plug 'morhetz/gruvbox'
 Plug 'honza/vim-snippets'
 Plug 'yuttie/comfortable-motion.vim'
-Plug 'ryanoasis/vim-devicons'
+Plug 'tpope/vim-surround'
 call plug#end()
 
 colorscheme gruvbox
