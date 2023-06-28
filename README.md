@@ -13,4 +13,8 @@ This repository stores all the configuration (dotfiles) I have been using right 
 - .vimrc
 - .zshrc
 - .bash_profile
+- .ideavimrc (Vim in IntelliJ IDEA is really helpful! )
 - ...
+
+**Currently thinking of whether to transfer from vim to neovim.**
+
