@@ -1,0 +1,14 @@
+" Plugins
+Plug 'preservim/nerdtree'
+" NERDTree related settings
+set NERDTree
+nmap ff <action>(ActivateProjectToolWindow)
+
+" General settings
+set showmode
+
+" General key bindings
+let mapleader = " "
+inoremap jj <Esc>
+nmap L <action>(NextTab)
+nmap H <action>(PreviousTab)
