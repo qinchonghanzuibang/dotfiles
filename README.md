@@ -7,14 +7,19 @@ Information about my **os** and related software;
 - CPU: Apple M1 Max
 - GPU: Apple M1 Max
 - VIM - Vi IMproved 8.2 (2019 Dec 12, compiled Jun 17 2022 21:26:11)
+- NVIM v0.9.1
+  Build type: Release
+  LuaJIT 2.1.0-beta3
 
 This repository stores all the configuration (dotfiles) I have been using right now, including:
 
 - .vimrc
 - .zshrc
 - .bash_profile
+
 - .ideavimrc (Vim in IntelliJ IDEA is really helpful! )
+-  nvim 
 - ...
 
-**Currently thinking of whether to transfer from vim to neovim.**
+I have already switched from vim to neovim. 
 
