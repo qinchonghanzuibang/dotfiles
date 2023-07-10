@@ -74,10 +74,20 @@ end
 time([[try_loadstring definition]], false)
 time([[Defining packer_plugins]], true)
 _G.packer_plugins = {
+  ["betterTerm.nvim"] = {
+    loaded = true,
+    path = "/Users/qinchonghan/.local/share/nvim/site/pack/packer/start/betterTerm.nvim",
+    url = "https://github.com/CRAG666/betterTerm.nvim"
+  },
   ["coc.nvim"] = {
     loaded = true,
     path = "/Users/qinchonghan/.local/share/nvim/site/pack/packer/start/coc.nvim",
     url = "https://github.com/neoclide/coc.nvim"
+  },
+  ["code_runner.nvim"] = {
+    loaded = true,
+    path = "/Users/qinchonghan/.local/share/nvim/site/pack/packer/start/code_runner.nvim",
+    url = "https://github.com/CRAG666/code_runner.nvim"
   },
   ["gruvbox.nvim"] = {
     loaded = true,

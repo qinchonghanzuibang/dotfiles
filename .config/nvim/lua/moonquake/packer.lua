@@ -32,4 +32,7 @@ return require('packer').startup(function(use)
 
     use {'ojroques/nvim-hardline'}
 
+    use {'CRAG666/betterTerm.nvim'}
+
+    use {'CRAG666/code_runner.nvim'}
 end)
