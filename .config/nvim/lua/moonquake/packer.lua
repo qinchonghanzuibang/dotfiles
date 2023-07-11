@@ -13,7 +13,10 @@ return require('packer').startup(function(use)
          requires = { {'nvim-lua/plenary.nvim'} }
     }
  
-    use {"ellisonleao/gruvbox.nvim"}
+    use "ellisonleao/gruvbox.nvim"
+    use "folke/tokyonight.nvim"
+    use "EdenEast/nightfox.nvim"
+    use { "bluz71/vim-nightfly-colors", as = "nightfly" }
 
     use ('nvim-treesitter/nvim-treesitter', {run = ':TSUpdate'})
 
@@ -30,9 +33,21 @@ return require('packer').startup(function(use)
 
     use {'neoclide/coc.nvim', branch = 'release'}
 
-    use {'ojroques/nvim-hardline'}
-
     use {'CRAG666/betterTerm.nvim'}
 
     use {'CRAG666/code_runner.nvim'}
+
+    use {
+        'nvim-lualine/lualine.nvim',
+        requires = { 'nvim-tree/nvim-web-devicons', opt = true }
+    }
+
+    use {"ofseed/lualine-copilot"}
+
+    use {
+        'numToStr/Comment.nvim',
+        config = function()
+            require('Comment').setup()
+        end
+    }
 end)
