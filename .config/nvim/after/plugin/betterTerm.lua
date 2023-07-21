@@ -1,4 +1,7 @@
-require('betterTerm').setup()
+--[[ require('betterTerm').setup{
+    prefix = "Jonathan_",
+    size = 25
+}
 local betterTerm = require('betterTerm')
 -- toggle firts term
 vim.keymap.set({"n", "t"}, "<leader>tt", betterTerm.open, { desc = "Open terminal"})
@@ -13,4 +16,4 @@ vim.keymap.set(
         current = current + 1
     end,
     { desc = "New terminal"}
-)
+) ]]

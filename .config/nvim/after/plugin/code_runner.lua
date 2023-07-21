@@ -1,4 +1,7 @@
 require('code_runner').setup({
+    term = {
+        size = 25
+    },
   filetype = {
     java = {
       "cd $dir &&",
