@@ -12,10 +12,13 @@ return require('packer').startup(function(use)
     -- or                            , branch = '0.1.x',
          requires = { {'nvim-lua/plenary.nvim'} }
     }
- 
+
     use "ellisonleao/gruvbox.nvim"
+
     use "folke/tokyonight.nvim"
+
     use "EdenEast/nightfox.nvim"
+
     use { "bluz71/vim-nightfly-colors", as = "nightfly" }
 
     use ('nvim-treesitter/nvim-treesitter', {run = ':TSUpdate'})
@@ -33,7 +36,9 @@ return require('packer').startup(function(use)
 
     use {'neoclide/coc.nvim', branch = 'release'}
 
-    use {'CRAG666/betterTerm.nvim'}
+ -- use {'CRAG666/betterTerm.nvim'} because it is too slow
+
+    use "numToStr/FTerm.nvim"
 
     use {'CRAG666/code_runner.nvim'}
 
@@ -50,4 +55,7 @@ return require('packer').startup(function(use)
             require('Comment').setup()
         end
     }
+
+    use 'lervag/vimtex'
+
 end)
