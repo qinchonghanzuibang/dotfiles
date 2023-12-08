@@ -5,6 +5,9 @@
 export ZSH="/Users/qinchonghan/.oh-my-zsh"
 # alias python3=/Users/qinchonghan/miniforge3/envs/python3_10_6/bin/python3.10
 # 
+tv () {
+	touch "$1" && vi "$1"
+}
 # Set name of the theme to load --- if set to "random", it will
 # load a random theme each time oh-my-zsh is loaded, in which case,
 # to know which specific one was loaded, run: echo $RANDOM_THEME
@@ -123,8 +126,31 @@ fi
 unset __conda_setup
 # <<< conda initialize <<<
 
+# # # Check if we are inside VSCode
+# if [ -z "$VSCODE_IPC_HOOK_CLI" ]; then
+#     # >>> conda initialize >>>
+#     # !! Contents within this block are managed by 'conda init' !!
+#     __conda_setup="$('/Users/qinchonghan/miniforge3/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
+#     if [ $? -eq 0 ]; then
+#         eval "$__conda_setup"
+#     else
+#         if [ -f "/Users/qinchonghan/miniforge3/etc/profile.d/conda.sh" ]; then
+#             . "/Users/qinchonghan/miniforge3/etc/profile.d/conda.sh"
+#         else
+#             export PATH="/Users/qinchonghan/miniforge3/bin:$PATH"
+#         fi
+#     fi
+#     unset __conda_setup
+#     # <<< conda initialize <<<
+# fi
+
+
 # neofetch
 export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
-export HOMEBREW_BOTTLE_DOMAIN=https://mirrors.ustc.edu.cn/homebrew-bottles/bottles
+# export HOMEBREW_BOTTLE_DOMAIN=https://mirrors.ustc.edu.cn/homebrew-bottles/bottles
 
-#export JAVA_HOME=`/usr/libexec/java_home -v 11.0.13`
+# export JAVA_HOME=`/usr/libexec/java_home -v 11`
+export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+alias vi="nvim"
+
+[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
