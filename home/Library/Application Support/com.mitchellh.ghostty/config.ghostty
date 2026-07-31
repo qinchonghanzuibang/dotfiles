@@ -32,3 +32,7 @@ notify-on-command-finish-after = 30s
 # keybind = <placeholder>
 # keybind = <placeholder>
 # keybind = <placeholder>
+
+# Size
+window-width = 100
+window-height = 25
