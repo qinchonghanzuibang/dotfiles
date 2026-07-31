@@ -1,0 +1,704 @@
+#!/usr/bin/env zsh
+
+emulate -LR zsh
+setopt errexit nounset pipefail extendedglob
+
+typeset -gr SCRIPT_PATH=${0:A}
+typeset -gr REPO_ROOT=${SCRIPT_PATH:h}
+typeset -gr MANIFEST_FILE="$REPO_ROOT/manifest.txt"
+typeset -gr REPO_HOME="$REPO_ROOT/home"
+
+typeset -ga MANAGED_PATHS=()
+typeset -ga INSTALL_PATHS=()
+typeset -ga BACKED_PATHS=()
+typeset -ga NEW_PATHS=()
+typeset -g TARGET_HOME=''
+typeset -g BACKUP_ROOT=''
+typeset -g DRY_RUN=0
+
+die() {
+  print -u2 -r -- "error: $*"
+  exit 1
+}
+
+warn() {
+  print -u2 -r -- "warning: $*"
+}
+
+path_exists() {
+  [[ -e "$1" || -L "$1" ]]
+}
+
+path_type() {
+  local item_path=$1
+
+  if [[ -L "$item_path" ]]; then
+    REPLY=symlink
+  elif [[ -f "$item_path" ]]; then
+    REPLY=file
+  elif [[ -d "$item_path" ]]; then
+    REPLY=directory
+  elif [[ -e "$item_path" ]]; then
+    REPLY=unsupported
+  else
+    REPLY=missing
+  fi
+}
+
+mode_of() {
+  local item_path=$1
+
+  if stat -f '%Lp' "$item_path" >/dev/null 2>&1; then
+    REPLY=$(stat -f '%Lp' "$item_path")
+  else
+    REPLY=$(stat -c '%a' "$item_path")
+  fi
+}
+
+validate_relative_path() {
+  local rel=$1
+  local -a components
+  local component
+
+  [[ -n "$rel" ]] || die 'manifest contains an empty path'
+  [[ "$rel" != /* ]] || die "manifest path is absolute: $rel"
+  [[ "$rel" != */ ]] || die "manifest path has a trailing slash: $rel"
+  [[ "$rel" != *$'\r'* ]] || die 'manifest path contains a carriage return'
+
+  components=("${(@s:/:)rel}")
+  for component in "${components[@]}"; do
+    [[ -n "$component" ]] || die "manifest path contains an empty component: $rel"
+    [[ "$component" != '.' ]] || die "manifest path contains a dot component: $rel"
+    [[ "$component" != '..' ]] || die "manifest path contains traversal: $rel"
+  done
+}
+
+load_manifest() {
+  local line
+  local existing
+  local -A seen=()
+
+  [[ -f "$MANIFEST_FILE" && ! -L "$MANIFEST_FILE" ]] || \
+    die "missing or unsafe manifest: $MANIFEST_FILE"
+  [[ -d "$REPO_HOME" && ! -L "$REPO_HOME" ]] || \
+    die "missing or unsafe repository home: $REPO_HOME"
+
+  MANAGED_PATHS=()
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    validate_relative_path "$line"
+    [[ -z ${seen[$line]-} ]] || die "duplicate manifest path: $line"
+    seen[$line]=1
+    MANAGED_PATHS+=("$line")
+  done < "$MANIFEST_FILE"
+
+  (( ${#MANAGED_PATHS} > 0 )) || die 'manifest is empty'
+
+  for line in "${MANAGED_PATHS[@]}"; do
+    for existing in "${MANAGED_PATHS[@]}"; do
+      [[ "$line" == "$existing" ]] && continue
+      [[ "$line" != "$existing/"* ]] || \
+        die "overlapping manifest paths: $existing and $line"
+    done
+  done
+}
+
+canonical_directory() {
+  local directory=$1
+  local canonical
+
+  [[ -d "$directory" ]] || die "directory does not exist: $directory"
+  canonical=$(cd -P -- "$directory" && pwd -P) || die "cannot resolve directory: $directory"
+  [[ "$canonical" != '/' ]] || die 'refusing to use the filesystem root as a home directory'
+  REPLY=$canonical
+}
+
+set_target_home() {
+  local requested=${DOTFILES_HOME:-${HOME:-}}
+
+  [[ -n "$requested" ]] || die 'neither DOTFILES_HOME nor HOME is set'
+  [[ "$requested" != *$'\n'* ]] || die 'home path contains a newline'
+  canonical_directory "$requested"
+  TARGET_HOME=$REPLY
+}
+
+is_exact_managed_path() {
+  local candidate=$1
+  local rel
+
+  for rel in "${MANAGED_PATHS[@]}"; do
+    [[ "$candidate" == "$rel" ]] && return 0
+  done
+  return 1
+}
+
+is_covered_managed_path() {
+  local candidate=$1
+  local rel
+
+  for rel in "${MANAGED_PATHS[@]}"; do
+    [[ "$candidate" == "$rel" || "$candidate" == "$rel/"* ]] && return 0
+  done
+  return 1
+}
+
+normalize_relative_path() {
+  local input=$1
+  local component
+  local -a components stack
+
+  components=("${(@s:/:)input}")
+  stack=()
+  for component in "${components[@]}"; do
+    [[ -z "$component" || "$component" == '.' ]] && continue
+    if [[ "$component" == '..' ]]; then
+      (( ${#stack} > 0 )) || return 1
+      stack[-1]=()
+    else
+      stack+=("$component")
+    fi
+  done
+
+  (( ${#stack} > 0 )) || return 1
+  REPLY="${(j:/:)stack}"
+}
+
+assert_safe_parent_chain() {
+  local base=$1
+  local rel=$2
+  local current=$base
+  local component
+  local -a components
+
+  validate_relative_path "$rel"
+  components=("${(@s:/:)rel}")
+  components[-1]=()
+  for component in "${components[@]}"; do
+    current="$current/$component"
+    [[ ! -L "$current" ]] || die "unsafe symlink in path: $current"
+    [[ ! -e "$current" || -d "$current" ]] || die "non-directory parent path: $current"
+  done
+}
+
+validate_symlink() {
+  local base=$1
+  local link=$2
+  local target link_rel parent_rel candidate
+
+  target=$(readlink "$link") || die "cannot read symlink: $link"
+  [[ "$target" != /* ]] || die "unsafe absolute symlink: $link"
+
+  link_rel=${link#"$base"/}
+  [[ "$link_rel" != "$link" ]] || die "symlink escapes managed base: $link"
+  parent_rel=${link_rel:h}
+  [[ "$parent_rel" == '.' ]] && parent_rel=''
+  candidate=${parent_rel:+$parent_rel/}$target
+  normalize_relative_path "$candidate" || die "unsafe symlink traversal: $link"
+  is_covered_managed_path "$REPLY" || die "symlink target is outside the managed allowlist: $link"
+}
+
+validate_managed_tree() {
+  local base=$1
+  local rel=$2
+  local item_path="$base/$rel"
+  local type special link
+  local -a links
+
+  [[ -d "$base" && ! -L "$base" ]] || die "missing or unsafe managed base: $base"
+  assert_safe_parent_chain "$base" "$rel"
+  path_exists "$item_path" || return 0
+
+  path_type "$item_path"
+  type=$REPLY
+  [[ "$type" != unsupported ]] || die "unsupported managed path type: $item_path"
+
+  links=()
+  if [[ -L "$item_path" ]]; then
+    links+=("$item_path")
+  elif [[ -d "$item_path" ]]; then
+    special=$(find "$item_path" ! -type f ! -type d ! -type l -print -quit)
+    [[ -z "$special" ]] || die "unsupported object in managed directory: $special"
+    links+=("$item_path"/**/*(ND@))
+  fi
+
+  for link in "${links[@]}"; do
+    validate_symlink "$base" "$link"
+  done
+}
+
+paths_identical() {
+  local left=$1
+  local right=$2
+  local left_type right_type left_mode right_mode changes
+
+  path_type "$left"
+  left_type=$REPLY
+  path_type "$right"
+  right_type=$REPLY
+  [[ "$left_type" == "$right_type" ]] || return 1
+
+  case "$left_type" in
+    file)
+      cmp -s -- "$left" "$right" || return 1
+      mode_of "$left"
+      left_mode=$REPLY
+      mode_of "$right"
+      right_mode=$REPLY
+      [[ "$left_mode" == "$right_mode" ]]
+      ;;
+    directory)
+      if ! changes=$(rsync -rnic --delete --links --perms -- "$left/" "$right/"); then
+        return 1
+      fi
+      [[ -z "$changes" ]]
+      ;;
+    symlink)
+      [[ "$(readlink "$left")" == "$(readlink "$right")" ]]
+      ;;
+    missing)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+managed_paths_identical() {
+  local left=$1
+  local right=$2
+  local left_type right_type changes
+
+  path_type "$left"
+  left_type=$REPLY
+  path_type "$right"
+  right_type=$REPLY
+  if [[ "$left_type" == directory && "$right_type" == directory ]]; then
+    if ! changes=$(rsync -rnic --delete --links --perms --exclude='.DS_Store' -- \
+      "$left/" "$right/"); then
+      return 1
+    fi
+    [[ -z "$changes" ]]
+  else
+    paths_identical "$left" "$right"
+  fi
+}
+
+copy_exact() {
+  local source=$1
+  local destination=$2
+  local source_type
+
+  command rm -rf -- "$destination"
+  mkdir -p -- "${destination:h}"
+  path_type "$source"
+  source_type=$REPLY
+  if [[ "$source_type" == directory ]]; then
+    mkdir -p -- "$destination"
+    rsync -a -- "$source/" "$destination/"
+  else
+    rsync -a -- "$source" "$destination"
+  fi
+}
+
+copy_managed() {
+  local source=$1
+  local destination=$2
+  local source_type
+
+  command rm -rf -- "$destination"
+  mkdir -p -- "${destination:h}"
+  path_type "$source"
+  source_type=$REPLY
+  if [[ "$source_type" == directory ]]; then
+    mkdir -p -- "$destination"
+    rsync -a --exclude='.DS_Store' -- "$source/" "$destination/"
+  else
+    rsync -a -- "$source" "$destination"
+  fi
+}
+
+choose_backup_directory() {
+  local requested=${DOTFILES_BACKUP_ROOT:-$TARGET_HOME/.dotfiles-backups}
+  local stamp candidate
+  integer suffix=0
+
+  [[ -n "$requested" ]] || die 'backup root is empty'
+  [[ "$requested" != *$'\n'* ]] || die 'backup root contains a newline'
+  BACKUP_ROOT=${requested:A}
+  [[ "$BACKUP_ROOT" != '/' && "$BACKUP_ROOT" != "$TARGET_HOME" && "$BACKUP_ROOT" != "$REPO_ROOT" ]] || \
+    die "unsafe backup root: $BACKUP_ROOT"
+
+  local rel destination
+  for rel in "${MANAGED_PATHS[@]}"; do
+    destination="$TARGET_HOME/$rel"
+    [[ "$BACKUP_ROOT" != "$destination" && "$BACKUP_ROOT" != "$destination/"* && \
+       "$destination" != "$BACKUP_ROOT/"* ]] || \
+      die "backup root overlaps a managed path: $BACKUP_ROOT"
+  done
+
+  stamp=$(date -u '+%Y%m%d-%H%M%S')
+  candidate="$BACKUP_ROOT/$stamp"
+  while path_exists "$candidate"; do
+    (( suffix += 1 ))
+    candidate="$BACKUP_ROOT/$stamp-$suffix"
+  done
+  REPLY=$candidate
+}
+
+parse_optional_dry_run() {
+  DRY_RUN=0
+  (( $# <= 1 )) || die 'too many arguments'
+  if (( $# == 1 )); then
+    [[ "$1" == '--dry-run' ]] || die "unknown option: $1"
+    DRY_RUN=1
+  fi
+}
+
+run_install() {
+  local rel source destination backup_dir backup_path
+
+  parse_optional_dry_run "$@"
+  load_manifest
+  set_target_home
+  INSTALL_PATHS=()
+  BACKED_PATHS=()
+  NEW_PATHS=()
+
+  for rel in "${MANAGED_PATHS[@]}"; do
+    source="$REPO_HOME/$rel"
+    destination="$TARGET_HOME/$rel"
+    validate_managed_tree "$REPO_HOME" "$rel"
+    validate_managed_tree "$TARGET_HOME" "$rel"
+    if ! path_exists "$source"; then
+      warn "missing from repo; skipping install: $rel"
+      continue
+    fi
+    INSTALL_PATHS+=("$rel")
+    if path_exists "$destination"; then
+      BACKED_PATHS+=("$rel")
+    else
+      NEW_PATHS+=("$rel")
+    fi
+  done
+
+  if (( ${#INSTALL_PATHS} == 0 )); then
+    warn 'no managed repository paths are available to install'
+    return 0
+  fi
+
+  choose_backup_directory
+  backup_dir=$REPLY
+
+  if (( DRY_RUN )); then
+    print -r -- "would create backup: $backup_dir"
+    for rel in "${BACKED_PATHS[@]}"; do
+      print -r -- "would back up: $rel"
+    done
+    for rel in "${NEW_PATHS[@]}"; do
+      print -r -- "would record as newly created: $rel"
+    done
+    for rel in "${INSTALL_PATHS[@]}"; do
+      print -r -- "would install: $rel"
+    done
+    return 0
+  fi
+
+  mkdir -p -- "$backup_dir/paths"
+  print -r -- '1' > "$backup_dir/version"
+  print -r -- "$TARGET_HOME" > "$backup_dir/target-home"
+  rsync -a -- "$MANIFEST_FILE" "$backup_dir/managed-paths.txt"
+  : > "$backup_dir/existing-paths.txt"
+  : > "$backup_dir/newly-created.txt"
+
+  for rel in "${BACKED_PATHS[@]}"; do
+    destination="$TARGET_HOME/$rel"
+    backup_path="$backup_dir/paths/$rel"
+    copy_exact "$destination" "$backup_path"
+    print -r -- "$rel" >> "$backup_dir/existing-paths.txt"
+  done
+  for rel in "${NEW_PATHS[@]}"; do
+    print -r -- "$rel" >> "$backup_dir/newly-created.txt"
+  done
+
+  for rel in "${BACKED_PATHS[@]}"; do
+    destination="$TARGET_HOME/$rel"
+    backup_path="$backup_dir/paths/$rel"
+    paths_identical "$destination" "$backup_path" || \
+      die "backup verification failed before install: $rel"
+  done
+
+  for rel in "${INSTALL_PATHS[@]}"; do
+    source="$REPO_HOME/$rel"
+    destination="$TARGET_HOME/$rel"
+    copy_managed "$source" "$destination"
+    print -r -- "installed: $rel"
+  done
+  print -r -- "backup: $backup_dir"
+}
+
+run_sync() {
+  local rel source destination
+  local -a sync_paths=()
+
+  parse_optional_dry_run "$@"
+  load_manifest
+  set_target_home
+
+  for rel in "${MANAGED_PATHS[@]}"; do
+    source="$TARGET_HOME/$rel"
+    destination="$REPO_HOME/$rel"
+    validate_managed_tree "$TARGET_HOME" "$rel"
+    validate_managed_tree "$REPO_HOME" "$rel"
+    if ! path_exists "$source"; then
+      warn "missing from home; repository copy left untouched: $rel"
+      continue
+    fi
+    sync_paths+=("$rel")
+  done
+
+  for rel in "${sync_paths[@]}"; do
+    source="$TARGET_HOME/$rel"
+    destination="$REPO_HOME/$rel"
+    if (( DRY_RUN )); then
+      print -r -- "would sync: $rel"
+    else
+      copy_managed "$source" "$destination"
+      print -r -- "synced: $rel"
+    fi
+  done
+}
+
+run_status() {
+  local rel home_path repo_path home_type repo_type
+  integer different=0
+
+  (( $# == 0 )) || die 'status takes no arguments'
+  load_manifest
+  set_target_home
+
+  for rel in "${MANAGED_PATHS[@]}"; do
+    home_path="$TARGET_HOME/$rel"
+    repo_path="$REPO_HOME/$rel"
+    validate_managed_tree "$TARGET_HOME" "$rel"
+    validate_managed_tree "$REPO_HOME" "$rel"
+    path_type "$home_path"
+    home_type=$REPLY
+    path_type "$repo_path"
+    repo_type=$REPLY
+
+    if [[ "$home_type" == missing && "$repo_type" == missing ]]; then
+      print -r -- "$rel: missing from home, missing from repo"
+      different=1
+    elif [[ "$home_type" == missing ]]; then
+      print -r -- "$rel: missing from home"
+      different=1
+    elif [[ "$repo_type" == missing ]]; then
+      print -r -- "$rel: missing from repo"
+      different=1
+    elif [[ "$home_type" != "$repo_type" ]]; then
+      print -r -- "$rel: type mismatch"
+      different=1
+    elif managed_paths_identical "$home_path" "$repo_path"; then
+      print -r -- "$rel: identical"
+    else
+      print -r -- "$rel: modified"
+      different=1
+    fi
+  done
+
+  return $different
+}
+
+load_restore_lists() {
+  local backup_dir=$1
+  local file line
+  local -A seen=()
+
+  BACKED_PATHS=()
+  NEW_PATHS=()
+
+  file="$backup_dir/existing-paths.txt"
+  [[ -f "$file" && ! -L "$file" ]] || die "invalid backup path list: $file"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -n "$line" ]] || continue
+    validate_relative_path "$line"
+    is_exact_managed_path "$line" || die "backup contains an unmanaged path: $line"
+    [[ -z ${seen[$line]-} ]] || die "duplicate backup path: $line"
+    seen[$line]=backed
+    BACKED_PATHS+=("$line")
+  done < "$file"
+
+  file="$backup_dir/newly-created.txt"
+  [[ -f "$file" && ! -L "$file" ]] || die "invalid backup path list: $file"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -n "$line" ]] || continue
+    validate_relative_path "$line"
+    is_exact_managed_path "$line" || die "backup contains an unmanaged path: $line"
+    [[ -z ${seen[$line]-} ]] || die "path appears in multiple backup lists: $line"
+    seen[$line]=new
+    NEW_PATHS+=("$line")
+  done < "$file"
+
+  (( ${#BACKED_PATHS} + ${#NEW_PATHS} > 0 )) || die 'backup has no affected paths'
+}
+
+resolve_restore_backup() {
+  local selector=$1
+  local requested candidate
+  local -a candidates=()
+
+  if [[ "$selector" == latest ]]; then
+    requested=${DOTFILES_BACKUP_ROOT:-$TARGET_HOME/.dotfiles-backups}
+    BACKUP_ROOT=${requested:A}
+    [[ -d "$BACKUP_ROOT" && ! -L "$BACKUP_ROOT" ]] || \
+      die "backup root does not exist or is unsafe: $BACKUP_ROOT"
+    candidates=("$BACKUP_ROOT"/*(N/))
+    (( ${#candidates} > 0 )) || die "no backups found in: $BACKUP_ROOT"
+    for candidate in "${(@On)candidates}"; do
+      if [[ -f "$candidate/version" && ! -L "$candidate/version" ]]; then
+        REPLY=$candidate
+        return 0
+      fi
+    done
+    die "no valid backup directories found in: $BACKUP_ROOT"
+  fi
+
+  requested=${selector:A}
+  [[ -d "$requested" && ! -L "$requested" ]] || \
+    die "backup directory does not exist or is unsafe: $requested"
+  REPLY=$requested
+}
+
+validate_restore_backup() {
+  local backup_dir=$1
+  local recorded_home rel backup_path destination
+
+  [[ "$backup_dir" != '/' && "$backup_dir" != "$TARGET_HOME" && "$backup_dir" != "$REPO_ROOT" ]] || \
+    die "unsafe backup directory: $backup_dir"
+  [[ -f "$backup_dir/version" && ! -L "$backup_dir/version" && \
+     "$(<"$backup_dir/version")" == '1' ]] || die 'unsupported or invalid backup version'
+  [[ -f "$backup_dir/target-home" && ! -L "$backup_dir/target-home" ]] || \
+    die 'backup is missing target-home metadata'
+  recorded_home=$(<"$backup_dir/target-home")
+  [[ "$recorded_home" == "$TARGET_HOME" ]] || \
+    die "backup belongs to a different target home: $recorded_home"
+  [[ -f "$backup_dir/managed-paths.txt" && ! -L "$backup_dir/managed-paths.txt" ]] || \
+    die 'backup is missing managed path metadata'
+  cmp -s -- "$MANIFEST_FILE" "$backup_dir/managed-paths.txt" || \
+    die 'backup manifest does not match the current manifest'
+
+  for rel in "${MANAGED_PATHS[@]}"; do
+    destination="$TARGET_HOME/$rel"
+    [[ "$backup_dir" != "$destination" && "$backup_dir" != "$destination/"* && \
+       "$destination" != "$backup_dir/"* ]] || \
+      die "backup directory overlaps a managed path: $backup_dir"
+  done
+
+  load_restore_lists "$backup_dir"
+
+  for rel in "${BACKED_PATHS[@]}"; do
+    backup_path="$backup_dir/paths/$rel"
+    path_exists "$backup_path" || die "backup content is missing: $rel"
+    validate_managed_tree "$backup_dir/paths" "$rel"
+    destination="$TARGET_HOME/$rel"
+    validate_managed_tree "$TARGET_HOME" "$rel"
+  done
+  for rel in "${NEW_PATHS[@]}"; do
+    destination="$TARGET_HOME/$rel"
+    validate_managed_tree "$TARGET_HOME" "$rel"
+  done
+}
+
+run_restore() {
+  local selector backup_dir rel source destination
+
+  (( $# >= 1 )) || die 'restore requires a backup directory or latest'
+  selector=$1
+  shift
+  parse_optional_dry_run "$@"
+  load_manifest
+  set_target_home
+  resolve_restore_backup "$selector"
+  backup_dir=$REPLY
+  validate_restore_backup "$backup_dir"
+
+  if (( DRY_RUN )); then
+    for rel in "${BACKED_PATHS[@]}"; do
+      print -r -- "would restore: $rel"
+    done
+    for rel in "${NEW_PATHS[@]}"; do
+      print -r -- "would remove newly created path: $rel"
+    done
+    return 0
+  fi
+
+  for rel in "${BACKED_PATHS[@]}"; do
+    source="$backup_dir/paths/$rel"
+    destination="$TARGET_HOME/$rel"
+    copy_exact "$source" "$destination"
+    print -r -- "restored: $rel"
+  done
+  for rel in "${NEW_PATHS[@]}"; do
+    destination="$TARGET_HOME/$rel"
+    command rm -rf -- "$destination"
+    print -r -- "removed newly created path: $rel"
+  done
+  print -r -- "restored backup: $backup_dir"
+}
+
+run_clean() {
+  local file
+
+  (( $# == 0 )) || die 'clean takes no arguments'
+  while IFS= read -r -d $'\0' file; do
+    command rm -f -- "$file"
+    print -r -- "removed: ${file#"$REPO_ROOT"/}"
+  done < <(
+    find "$REPO_ROOT" -path "$REPO_ROOT/.git" -prune -o \
+      \( -type f -o -type l \) \( -name '.DS_Store' -o -name $'Icon\r' \) -print0
+  )
+}
+
+show_help() {
+  print -r -- 'Usage:'
+  print -r -- '  ./dotfiles install [--dry-run]'
+  print -r -- '  ./dotfiles sync [--dry-run]'
+  print -r -- '  ./dotfiles status'
+  print -r -- '  ./dotfiles restore <backup-directory|latest> [--dry-run]'
+  print -r -- '  ./dotfiles clean'
+  print -r -- '  ./dotfiles help'
+  print -r -- ''
+  print -r -- 'Environment:'
+  print -r -- '  DOTFILES_HOME         target/source home (defaults to HOME)'
+  print -r -- '  DOTFILES_BACKUP_ROOT  install backup root'
+}
+
+case ${1:-help} in
+  install)
+    shift
+    run_install "$@"
+    ;;
+  sync)
+    shift
+    run_sync "$@"
+    ;;
+  status)
+    shift
+    run_status "$@"
+    ;;
+  restore)
+    shift
+    run_restore "$@"
+    ;;
+  clean)
+    shift
+    run_clean "$@"
+    ;;
+  help|-h|--help)
+    (( $# <= 1 )) || die 'help takes no arguments'
+    show_help
+    ;;
+  *)
+    die "unknown command: $1 (run ./dotfiles help)"
+    ;;
+esac

@@ -1,0 +1,9 @@
+.zshrc
+.zprofile
+.tmux.conf
+.gitconfig
+.condarc
+.config/git/ignore
+Library/Application Support/com.mitchellh.ghostty/config.ghostty
+.config/starship.toml
+.config/nvim

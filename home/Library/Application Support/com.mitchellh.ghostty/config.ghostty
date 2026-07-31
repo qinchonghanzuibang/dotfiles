@@ -1,0 +1,34 @@
+# Appearance
+theme = Gruvbox Dark
+font-size = 14
+
+background-opacity = 1
+
+window-padding-x = 10
+window-padding-y = 8
+window-padding-balance = true
+
+# Cursor and mouse
+cursor-style = block
+cursor-style-blink = false
+mouse-hide-while-typing = true
+copy-on-select = false
+
+# macOS
+macos-option-as-alt = left
+
+# Shell and SSH
+shell-integration = detect
+shell-integration-features = no-cursor,ssh-env,ssh-terminfo
+
+# Scrollback
+scrollback-limit = 100000000
+
+# Notifications
+notify-on-command-finish = unfocused
+notify-on-command-finish-after = 30s
+
+# Keybindings
+# keybind = <placeholder>
+# keybind = <placeholder>
+# keybind = <placeholder>

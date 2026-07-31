@@ -1,25 +1,78 @@
-# Personal Configuration
+# Dotfiles
 
-Information about my **os** and related software;
+This repository stores a small, explicit set of macOS command-line configuration files. The live files are copied without reformatting or rewriting; `manifest.txt` is the management allowlist.
 
-- OS: macOS 12.5 21G72 arm64
-- Shell: zsh 5.8.1
-- CPU: Apple M1 Max
-- GPU: Apple M1 Max
-- VIM - Vi IMproved 8.2 (2019 Dec 12, compiled Jun 17 2022 21:26:11)
-- NVIM v0.9.4
-  Build type: Release
-  LuaJIT 2.1.1699801871
+## Managed files
 
-This repository stores all the configuration (dotfiles) I have been using right now, including:
+- `.zshrc`
+- `.zprofile`
+- `.tmux.conf`
+- `.gitconfig`
+- `.condarc`
+- `.config/git/ignore`
+- `Library/Application Support/com.mitchellh.ghostty/config.ghostty`
+- `.config/starship.toml`
+- `.config/nvim`
 
-- .vimrc
-- .zshrc
-- .bash_profile
+Some manifest entries may be absent. `sync` warns and preserves the repository copy when a live source is missing, while `install` warns and skips a missing repository source. Generated `.DS_Store` files are excluded from managed directory transfers and comparisons.
 
-- .ideavimrc (Vim in IntelliJ IDEA is really helpful! )
--  nvim 
-- ...
+## Usage
 
-I have already switched from vim to neovim. 
+Inspect differences without changing anything:
 
+```zsh
+./dotfiles status
+./dotfiles install --dry-run
+./dotfiles sync --dry-run
+./dotfiles restore latest --dry-run
+```
+
+Install repository files into the target home:
+
+```zsh
+./dotfiles install
+```
+
+Every install completes a backup before its first destination write. Backups default to `~/.dotfiles-backups/<timestamp>/`, preserve managed relative paths, and record destinations newly created by that install. Override the location with `DOTFILES_BACKUP_ROOT`.
+
+Copy the managed live files back into `home/` exactly:
+
+```zsh
+./dotfiles sync
+```
+
+Restore a particular install backup, or the latest backup. Restore replaces paths that existed before the install and removes paths that install recorded as newly created:
+
+```zsh
+./dotfiles restore ~/.dotfiles-backups/20260101-120000
+./dotfiles restore latest
+```
+
+Remove only `.DS_Store` and `Icon` carriage-return files from the repository:
+
+```zsh
+./dotfiles clean
+```
+
+`--dry-run` is completely non-mutating. For isolated testing, point every operation at a temporary home:
+
+```zsh
+test_home="$(mktemp -d)"
+DOTFILES_HOME="$test_home" \
+DOTFILES_BACKUP_ROOT="$test_home/backups" \
+./dotfiles install
+```
+
+## Packages and prerequisites
+
+Install the curated Homebrew bundle with:
+
+```zsh
+brew bundle --file ./Brewfile
+```
+
+The Zsh configuration expects [Oh My Zsh](https://ohmyz.sh/). Its `git`, `macos`, `brew`, `gh`, `sudo`, and `extract` plugins ship with Oh My Zsh. Install the third-party `zsh-autosuggestions` and `zsh-syntax-highlighting` plugins under the Oh My Zsh custom plugin directory before starting a shell with this configuration.
+
+Miniforge is installed separately because the captured shell configuration references the local Miniforge installation. Conda environments and application state are deliberately excluded.
+
+SSH material, tokens, passwords, proxy credentials, shell histories, caches, generated application state, Conda environments, and other secrets are not managed. Localhost proxy settings are permitted, but no remote credentials belong in this repository.

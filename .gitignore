@@ -1,1 +1,24 @@
-**/.DS_Store
+.DS_Store
+Icon?
+
+# Local state and credentials must never be tracked.
+.dotfiles-backups/
+home/.ssh/
+home/.config/clash/
+home/.config/configstore/
+home/.config/coc/
+home/.config/gh/hosts.yml
+home/.config/git/credentials
+home/.git-credentials
+home/.zsh_history
+home/.local/share/
+home/Library/*
+!home/Library/Application Support/
+home/Library/Application Support/*
+!home/Library/Application Support/com.mitchellh.ghostty/
+home/Library/Application Support/com.mitchellh.ghostty/*
+!home/Library/Application Support/com.mitchellh.ghostty/config.ghostty
+
+# Neovim configuration is managed; only generated local state is ignored.
+home/.config/nvim/.DS_Store
+home/.config/nvim/**/.DS_Store
