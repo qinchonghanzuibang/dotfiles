@@ -10,7 +10,7 @@ This repository stores a small, explicit set of macOS command-line configuration
 - `.gitconfig`
 - `.condarc`
 - `.config/git/ignore`
-- `.config/ghostty/config`
+- `Library/Application Support/com.mitchellh.ghostty/config.ghostty`
 - `.config/starship.toml`
 - `.config/nvim`
 

@@ -12,7 +12,12 @@ home/.config/git/credentials
 home/.git-credentials
 home/.zsh_history
 home/.local/share/
-home/Library/
+home/Library/*
+!home/Library/Application Support/
+home/Library/Application Support/*
+!home/Library/Application Support/com.mitchellh.ghostty/
+home/Library/Application Support/com.mitchellh.ghostty/*
+!home/Library/Application Support/com.mitchellh.ghostty/config.ghostty
 
 # Neovim configuration is managed; only generated local state is ignored.
 home/.config/nvim/.DS_Store
