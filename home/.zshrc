@@ -1,19 +1,7 @@
-export ZSH="$HOME/.oh-my-zsh"
-
-# Prompt 交给 Starship
-ZSH_THEME=""
-
-plugins=(
-  git
-  macos
-  brew
-  gh
-  sudo
-  extract
-  zsh-autosuggestions
-)
-
-source "$ZSH/oh-my-zsh.sh"
+# Native Zsh and Homebrew completion
+fpath=("$HOMEBREW_PREFIX/share/zsh/site-functions" $fpath)
+autoload -Uz compinit
+compinit
 
 # Default editor
 export EDITOR="nvim"
@@ -26,16 +14,14 @@ eval "$(fnm env --use-on-cd --shell zsh)"
 eval "$(starship init zsh)"
 
 # Colored file listing
-alias ls="eza --icons=auto --group-directories-first"
-alias ll="eza -lah --icons=auto --group-directories-first --git"
-alias la="eza -a --icons=auto --group-directories-first"
-alias lt="eza --tree --level=2 --icons=auto --group-directories-first"
+alias ls="eza --icons=never --group-directories-first"
+alias ll="eza -lah --icons=never --group-directories-first --git"
+alias la="eza -a --icons=never --group-directories-first"
+alias lt="eza --tree --level=2 --icons=never --group-directories-first"
 
 alias v="nvim"
 alias vi="nvim"
-
-# Must remain last
-source "${ZSH_CUSTOM:-$ZSH/custom}/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+alias gst="git status"
 
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
@@ -96,3 +82,8 @@ proxy_off() {
 
 alias pon="proxy_on"
 alias poff="proxy_off"
+
+source "$HOMEBREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
+
+# Must remain last
+source "$HOMEBREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"

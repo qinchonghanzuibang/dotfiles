@@ -71,7 +71,7 @@ Install the curated Homebrew bundle with:
 brew bundle --file ./Brewfile
 ```
 
-The Zsh configuration expects [Oh My Zsh](https://ohmyz.sh/). Its `git`, `macos`, `brew`, `gh`, `sudo`, and `extract` plugins ship with Oh My Zsh. Install the third-party `zsh-autosuggestions` and `zsh-syntax-highlighting` plugins under the Oh My Zsh custom plugin directory before starting a shell with this configuration.
+The Zsh configuration uses native `compinit` with Homebrew's completion directory. The Brew bundle installs `zsh-autosuggestions` and `zsh-syntax-highlighting`, which `.zshrc` loads from `$HOMEBREW_PREFIX`; Oh My Zsh is not required.
 
 Miniforge is installed separately because the captured shell configuration references the local Miniforge installation. Conda environments and application state are deliberately excluded.
 
